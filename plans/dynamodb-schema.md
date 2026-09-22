@@ -1,6 +1,6 @@
 # DynamoDB Schema — Car Dealership
 
-Status: proposed · Last updated: 2026-09-21
+Status: base table live, GSI1 pending · Last updated: 2026-09-21
 
 ## Context
 
@@ -73,6 +73,101 @@ per projected item instead of ~3 KB, so 5,000 vehicles fetch in ~2 pages rather 
 > Every filter chip on the search page must have its attribute in this list, or in-app filtering
 > silently breaks. Adding a new filter means updating the projection.
 
+## Infrastructure & environment
+
+The table already exists — it's provisioned through Vercel's native AWS integration (the project
+is linked via `.vercel/project.json`), not by a `CreateTable` script.
+
+**Live today:**
+
+- Table `car-dealer`, region `us-west-1`, base keys `PK` (partition) / `SK` (sort) — matches this
+  schema's base table exactly.
+- [app/lib/db/db.ts](../app/lib/db/db.ts) builds a `DynamoDBDocumentClient` from
+  `@aws-sdk/client-dynamodb` / `@aws-sdk/lib-dynamodb`, credentialed via `awsCredentialsProvider`
+  from `@vercel/functions/oidc` — OIDC federation to an AWS IAM role, no long-lived access keys.
+- Env vars live in `.env.local` (gitignored, never commit). Vercel prefixes each with the linked
+  resource's name, `car_dealer_`:
+  - `VERCEL_OIDC_TOKEN` — local-dev OIDC token (from `vercel env pull` / `vercel dev`)
+  - `car_dealer_AWS_ACCOUNT_ID`, `car_dealer_AWS_REGION`, `car_dealer_AWS_RESOURCE_ARN`, `car_dealer_AWS_ROLE_ARN`
+  - `car_dealer_DYNAMODB_TABLE_NAME`, `car_dealer_DYNAMODB_TABLE_PARTITION_KEY`, `car_dealer_DYNAMODB_TABLE_SORT_KEY`
+
+**Not live yet:** GSI1 (browse index) and GSI2 (optional favorite-count index). Only base-table
+keys are exposed by the integration; nothing indicates a GSI has been created. Access pattern 3
+(browse/filter/sort) is not functional until Migration 1 below runs.
+
+## Migrations
+
+Because the table is live and (eventually) holds real inventory, schema changes are **migrations
+against the existing table** (`UpdateTable`), not a throwaway `CreateTable`. DynamoDB allows adding
+one GSI per `UpdateTable` call; the table stays available and DynamoDB backfills the index in the
+background (status `CREATING` → `ACTIVE`).
+
+**Migration 1 — add GSI1.** Declare the two new attributes and create the index:
+
+```ts
+client.send(new UpdateTableCommand({
+  TableName: "car-dealer",
+  AttributeDefinitions: [
+    { AttributeName: "GSI1PK", AttributeType: "S" },
+    { AttributeName: "GSI1SK", AttributeType: "S" },
+  ],
+  GlobalSecondaryIndexUpdates: [{
+    Create: {
+      IndexName: "GSI1",
+      KeySchema: [
+        { AttributeName: "GSI1PK", KeyType: "HASH" },
+        { AttributeName: "GSI1SK", KeyType: "RANGE" },
+      ],
+      Projection: {
+        ProjectionType: "INCLUDE",
+        NonKeyAttributes: [
+          "vehicleId", "year", "make", "model", "trim", "price", "previousPrice",
+          "mileage", "bodyStyle", "drivetrain", "transmissionType", "fuelType",
+          "exteriorColorFamily", "condition", "dealRating", "factoryUpgrades", "thumbnailUrl",
+        ],
+      },
+    },
+  }],
+}));
+```
+
+Key names and the projection list are unchanged from the original design — nothing to rename,
+only to provision. Migration 2 (GSI2, `KEYS_ONLY`) follows the same shape later, only if the
+favorite-count feature is built.
+
+Migration scripts are idempotent (call `DescribeTable` first; skip if the index already exists)
+and numbered under `app/lib/db/migrations/` so there's an ordered history of changes to a table
+that now has real data, e.g. `app/lib/db/migrations/001-add-gsi1.ts`.
+
+## Seeding
+
+Run **after** Migration 1, not before — GSI1 needs to exist first so it backfills as the seed
+data lands instead of needing a separate backfill pass afterward.
+
+[app/lib/db/seed.ts](../app/lib/db/seed.ts) loads [app/data/mocks.json](../app/data/mocks.json)
+(165 generated vehicles) and writes two items per vehicle:
+
+- **Vehicle item** — `PK=VEH#<vehicleId>, SK=#META` plus every attribute from the mock record.
+  When `status` is `ACTIVE` or `PENDING`, also set `GSI1PK=STATUS#ACTIVE` and
+  `GSI1SK=PRICE#<price padded to 8 digits>#<vehicleId>`. `SOLD`/`DRAFT` vehicles get no GSI1
+  attributes at all — this is the sparse-GSI1 behavior from the [Table](#table) section,
+  exercised from the very first seed instead of only in later testing.
+- **VIN guard item** — `PK=VIN#<vin>, SK=VIN#<vin>` pointing at the vehicle's `vehicleId`, so
+  access pattern 2 (VIN lookup) works immediately.
+
+Written with `BatchWriteItem` in batches of 25 (the DynamoDB limit): 165 vehicles × 2 items =
+330 items, ~14 batches. `BatchWriteItem` has no `ConditionExpression`, so it skips the
+VIN-uniqueness check that `TransactWriteItems` enforces on real writes (access pattern 4) — fine
+for a one-time load of mock data with VINs already verified unique, not a pattern to reuse for
+live writes.
+
+Idempotent by construction: every write is a `PutRequest`, so rerunning the script just
+overwrites the same 165 items with the same `vehicleId`s (they come from the mock file, not
+regenerated per run).
+
+Add an `npm` script for convenience: `"db:seed": "tsx app/lib/db/seed.ts"` (or whatever runner
+the migration scripts use — keep both consistent).
+
 ## Vehicle attributes
 
 Note the split between **display** strings and **filter** values. The detail page shows
@@ -120,7 +215,7 @@ guard item also serves VIN lookups via `GetItem`, so no VIN index is needed.
 | -- | -------------------------------- | ---------------------------------------------------------------- |
 | 1  | Vehicle detail page              | `GetItem PK=VEH#<id>, SK=#META`                                    |
 | 2  | Look up by VIN                   | `GetItem PK=VIN#<vin>` → `vehicleId`                               |
-| 3  | **Browse / filter / sort / count** | `Query` GSI1 `GSI1PK=STATUS#ACTIVE`, paginate fully, cache, filter in app |
+| 3  | **Browse / filter / sort / count** | `Query` GSI1 `GSI1PK=STATUS#ACTIVE`, paginate fully, cache, filter in app — ⚠ pending Migration 1 |
 | 4  | Create vehicle                   | `TransactWriteItems` (vehicle + VIN guard)                         |
 | 5  | Update / mark sold               | `UpdateItem`; `REMOVE GSI1PK` drops it from browse                 |
 | 6  | Toggle favorite                  | `PutItem` / `DeleteItem PK=USER#<id>, SK=FAV#<vid>`                |
@@ -169,29 +264,42 @@ Add a search index (OpenSearch or Typesense, fed by DynamoDB Streams) when any o
 The vehicle item shape does not change when that happens — the index is added alongside, so the
 migration is additive.
 
-## Planned implementation
+## Implementation
 
-- `lib/dynamodb/client.ts` — `DynamoDBDocumentClient`. On Vercel, prefer OIDC federation
-  (`awsCredentialsProvider` from `@vercel/functions/oidc`) over long-lived access keys in env vars.
-- `lib/dynamodb/keys.ts` — key builders and the price-padding helper, so key formats live in
+Paths follow the `app/lib/...` convention already started, not the originally-guessed
+`lib/dynamodb/...`.
+
+**Done:**
+
+- [app/lib/db/db.ts](../app/lib/db/db.ts) — `DynamoDBDocumentClient` via OIDC federation
+  (`awsCredentialsProvider` from `@vercel/functions/oidc`).
+- `package.json` — `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `@vercel/functions`.
+- `.env.local` — table connection info (gitignored).
+
+**Pending:**
+
+- `app/lib/db/migrations/001-add-gsi1.ts` — Migration 1 above. Blocks access pattern 3.
+- `app/lib/db/seed.ts` — the Seeding script above. Run after `001-add-gsi1.ts`.
+- `app/lib/db/keys.ts` — key builders and the price-padding helper, so key formats live in
   exactly one place.
-- `lib/vehicles/types.ts` — `Vehicle`, `VehicleCard` (the GSI1 projection), enums.
-- `lib/vehicles/repository.ts` — patterns 1–5.
-- `lib/vehicles/filter.ts` — pure, dependency-free filter/sort/count over `VehicleCard[]`.
-- `lib/favorites/repository.ts` — patterns 6–11.
-- `scripts/create-table.ts` — `CreateTable` definition, runnable against DynamoDB Local and AWS.
+- `app/lib/vehicles/types.ts` — `Vehicle`, `VehicleCard` (the GSI1 projection), enums.
+- `app/lib/vehicles/repository.ts` — patterns 1–5.
+- `app/lib/vehicles/filter.ts` — pure, dependency-free filter/sort/count over `VehicleCard[]`.
+- `app/lib/favorites/repository.ts` — patterns 6–11.
 
 ## Verification
 
-Once implemented:
-
-1. Run DynamoDB Local in Docker; create the table with `scripts/create-table.ts`.
-2. Seed ~2,000 generated vehicles with varied makes, prices and statuses.
-3. Query GSI1 with `ReturnConsumedCapacity: 'TOTAL'` — confirm the full active set arrives in
-   ~2 pages and that consumed RCU matches the small projection. If it is large, the `INCLUDE`
-   list has drifted toward `ALL`.
-4. Mark a vehicle `SOLD`; confirm it vanishes from GSI1 but `GetItem` still returns it.
-5. Attempt a duplicate-VIN insert; confirm the transaction is rejected.
-6. Toggle a favorite twice; confirm idempotency and that pattern 7 is a single `GetItem`.
-7. Unit-test `lib/vehicles/filter.ts` against a fixed array: combined filters, each sort order,
-   result counts.
+1. Run Migration 1 (`app/lib/db/migrations/001-add-gsi1.ts`) against a DynamoDB Local table first;
+   confirm `DescribeTable` shows `GSI1` as `ACTIVE`.
+2. Run Migration 1 against the real `car-dealer` table the same way.
+3. Run `app/lib/db/seed.ts` against that table; confirm 330 items landed (165 vehicles + 165 VIN
+   guards).
+4. Query GSI1 with `ReturnConsumedCapacity: 'TOTAL'` — confirm exactly 140 items come back (the
+   mock file's `ACTIVE` + `PENDING` count), arriving in ~1 page, and that consumed RCU matches
+   the small projection. If the count is 165 instead of 140, the sparse-GSI1 write in the seed
+   script is wrong; if RCU is high, the `INCLUDE` list has drifted toward `ALL`.
+5. Mark a vehicle `SOLD`; confirm it vanishes from GSI1 but `GetItem` still returns it.
+6. Attempt a duplicate-VIN insert; confirm the transaction is rejected.
+7. Toggle a favorite twice; confirm idempotency and that pattern 7 is a single `GetItem`.
+8. Unit-test `app/lib/vehicles/filter.ts` against a fixed array: combined filters, each sort
+   order, result counts.
