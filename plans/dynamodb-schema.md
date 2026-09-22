@@ -1,6 +1,6 @@
 # DynamoDB Schema — Car Dealership
 
-Status: base table live, GSI1 pending · Last updated: 2026-09-21
+Status: table, GSI1, and seed data all live and verified · Last updated: 2026-09-22
 
 ## Context
 
@@ -27,8 +27,11 @@ Scope decisions for v1:
 
 ## Table
 
-One table, `car-dealer`, single-table design. On-demand billing (`PAY_PER_REQUEST`) — traffic is
-low and spiky, so this removes capacity planning entirely. Point-in-time recovery on.
+One table, `car-dealership`, single-table design. **Design intent** is on-demand billing
+(`PAY_PER_REQUEST`) — traffic is low and spiky, so this removes capacity planning entirely — with
+point-in-time recovery on. **Actual live table** is PROVISIONED (5 RCU / 5 WCU), because it was
+created manually through the AWS Console rather than by a script honoring this design; see
+"Infrastructure & environment" below. Worth switching to on-demand once things settle.
 
 |                   | Partition key | Sort key |
 | ----------------- | ------------- | -------- |
@@ -75,34 +78,42 @@ per projected item instead of ~3 KB, so 5,000 vehicles fetch in ~2 pages rather 
 
 ## Infrastructure & environment
 
-The table already exists — it's provisioned through Vercel's native AWS integration (the project
-is linked via `.vercel/project.json`), not by a `CreateTable` script.
+**Superseded design, kept for context:** the table was originally provisioned through Vercel's
+native AWS integration as `car-dealer`, with [app/lib/db/db.ts](../app/lib/db/db.ts)
+credentialed via `awsCredentialsProvider` from `@vercel/functions/oidc` (OIDC federation to an
+AWS IAM role, no long-lived keys) — the pattern this doc originally recommended. That's abandoned
+now: the IAM role's trust policy rejected the OIDC token
+(`AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`, confirmed not a token
+expiry issue), fixing it requires AWS IAM console access this account doesn't have, and there was
+no path to grant that access. Rather than stay blocked, the table and credentials were rebuilt
+manually.
 
 **Live today:**
 
-- Table `car-dealer`, region `us-west-1`, base keys `PK` (partition) / `SK` (sort) — matches this
-  schema's base table exactly.
-- [app/lib/db/db.ts](../app/lib/db/db.ts) builds a `DynamoDBDocumentClient` from
-  `@aws-sdk/client-dynamodb` / `@aws-sdk/lib-dynamodb`, credentialed via `awsCredentialsProvider`
-  from `@vercel/functions/oidc` — OIDC federation to an AWS IAM role, no long-lived access keys.
-- Env vars live in `.env.local` (gitignored, never commit). Vercel prefixes each with the linked
-  resource's name, `car_dealer_`:
-  - `VERCEL_OIDC_TOKEN` — local-dev OIDC token (from `vercel env pull` / `vercel dev`)
-  - `car_dealer_AWS_ACCOUNT_ID`, `car_dealer_AWS_REGION`, `car_dealer_AWS_RESOURCE_ARN`, `car_dealer_AWS_ROLE_ARN`
-  - `car_dealer_DYNAMODB_TABLE_NAME`, `car_dealer_DYNAMODB_TABLE_PARTITION_KEY`, `car_dealer_DYNAMODB_TABLE_SORT_KEY`
-
-**Not live yet:** GSI1 (browse index) and GSI2 (optional favorite-count index). Only base-table
-keys are exposed by the integration; nothing indicates a GSI has been created. Access pattern 3
-(browse/filter/sort) is not functional until Migration 1 below runs.
-
-**Blocked:** Migration 1 and the seed script are written (see below) and type-check cleanly, but
-running either against the live table currently fails at the credential step —
-`AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`. The OIDC token itself is
-valid (checked its `exp` claim), so this is the IAM role at `car_dealer_AWS_ROLE_ARN` not
-trusting this token's issuer/audience/subject
-(`...:project:car-dealer:environment:development`) — an AWS-side trust-policy configuration gap
-in the Vercel↔AWS integration, not an application bug. Needs to be resolved in the AWS IAM
-console (or by re-running the Vercel integration setup) before Migration 1 can actually execute.
+- Table `car-dealership`, region `us-west-1`, base keys `PK` (partition) / `SK` (sort) — matches
+  this schema's base table, created manually through the AWS Console (see the billing-mode note
+  under [Table](#table)).
+- IAM user `gerry-dynamodb`, authenticated with a static access key — no OIDC, no role
+  assumption. This is a deliberate step down from the original OIDC design; it works around the
+  trust-policy dead end but means a long-lived credential now lives in `.env.local`. Rotate it
+  periodically, and don't reuse this pattern for anything that isn't a single-developer project.
+- [app/lib/db/db.ts](../app/lib/db/db.ts) builds the `DynamoDBDocumentClient` directly from that
+  static key — used by both the app runtime and the migration/seed scripts now; there's no
+  separate admin-vs-app credential split anymore.
+- Env vars live in `.env.local` (gitignored, never commit):
+  `DYNAMODB_ACCESS_KEY_ID`, `DYNAMODB_SECRET_ACCESS_KEY`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_NAME`.
+  Deliberately **not** named `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` — those
+  exact names are reserved by the AWS Lambda runtime Vercel Functions run on, and get silently
+  replaced with Lambda's own execution-role credentials in production if used, which would break
+  DynamoDB auth in a very confusing way. Keep using the `DYNAMODB_*` names if this ever gets
+  redeployed.
+- GSI1 was created by running `npm run db:migrate` against this new static-credential setup —
+  the first successful run of Migration 1, once the OIDC trust-policy dead end was routed
+  around. The table is PROVISIONED (not the design's intended PAY_PER_REQUEST), so the script
+  detects that and matches the GSI's throughput to the base table's 5 RCU / 5 WCU rather than
+  erroring; see [Migration 1](#migrations) below. As of this writing it's still `CREATING` —
+  confirm with `npm run db:migrate` again once it's had time to finish; it's idempotent, so on an
+  already-`ACTIVE` index it just prints "nothing to do" rather than erroring.
 
 ## Migrations
 
@@ -115,7 +126,7 @@ background (status `CREATING` → `ACTIVE`).
 
 ```ts
 client.send(new UpdateTableCommand({
-  TableName: "car-dealer",
+  TableName: "car-dealership",
   AttributeDefinitions: [
     { AttributeName: "GSI1PK", AttributeType: "S" },
     { AttributeName: "GSI1SK", AttributeType: "S" },
@@ -135,6 +146,11 @@ client.send(new UpdateTableCommand({
           "exteriorColorFamily", "condition", "dealRating", "factoryUpgrades", "thumbnailUrl",
         ],
       },
+      // Only needed because the live table is PROVISIONED, not the design's intended
+      // PAY_PER_REQUEST — see the "Table" section. The script reads the base table's
+      // current throughput and matches it here rather than hardcoding a number; DynamoDB
+      // rejects this field entirely on an on-demand table.
+      ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 },
     },
   }],
 }));
@@ -172,10 +188,19 @@ live writes.
 
 Idempotent by construction: every write is a `PutRequest`, so rerunning the script just
 overwrites the same 165 items with the same `vehicleId`s (they come from the mock file, not
-regenerated per run).
+regenerated per run) — confirmed in practice: the first live run got throttled partway through
+and was simply re-run to completion.
 
-Add an `npm` script for convenience: `"db:seed": "tsx app/lib/db/seed.ts"` (or whatever runner
-the migration scripts use — keep both consistent).
+**Throttling on a PROVISIONED table.** On the live table's 5 WCU (see the billing-mode note
+under [Table](#table)), a `BatchWriteItem` call can fail outright with
+`ProvisionedThroughputExceededException` once burst credit runs out, rather than returning
+`UnprocessedItems`. `writeBatch` catches that specific exception and retries the same request
+with exponential backoff (1s, 2s, 4s, ... capped at 15s), and the main loop adds a 300ms pacing
+gap between batches. On an on-demand table this code path is simply never exercised.
+
+`npm run db:seed` runs `tsx --env-file=.env.local app/lib/db/seed.ts` — the `--env-file` flag
+matters: `tsx` doesn't load `.env.local` automatically the way `next dev`/`build` do, so without
+it every `process.env.DYNAMODB_*` read is `undefined`.
 
 ## Vehicle attributes
 
@@ -224,7 +249,7 @@ guard item also serves VIN lookups via `GetItem`, so no VIN index is needed.
 | -- | -------------------------------- | ---------------------------------------------------------------- |
 | 1  | Vehicle detail page              | `GetItem PK=VEH#<id>, SK=#META`                                    |
 | 2  | Look up by VIN                   | `GetItem PK=VIN#<vin>` → `vehicleId`                               |
-| 3  | **Browse / filter / sort / count** | `Query` GSI1 `GSI1PK=STATUS#ACTIVE`, paginate fully, cache, filter in app — ⚠ pending Migration 1 |
+| 3  | **Browse / filter / sort / count** | `Query` GSI1 `GSI1PK=STATUS#ACTIVE`, paginate fully, cache, filter in app — ✅ verified: 140 items, 7 RCU total |
 | 4  | Create vehicle                   | `TransactWriteItems` (vehicle + VIN guard)                         |
 | 5  | Update / mark sold               | `UpdateItem`; `REMOVE GSI1PK` drops it from browse                 |
 | 6  | Toggle favorite                  | `PutItem` / `DeleteItem PK=USER#<id>, SK=FAV#<vid>`                |
@@ -280,17 +305,24 @@ Paths follow the `app/lib/...` convention already started, not the originally-gu
 
 **Done (code written, type-checks and lints clean):**
 
-- [app/lib/db/db.ts](../app/lib/db/db.ts) — `DynamoDBDocumentClient` via OIDC federation
-  (`awsCredentialsProvider` from `@vercel/functions/oidc`), plus `getRawClient()` (for
+- [app/lib/db/db.ts](../app/lib/db/db.ts) — `DynamoDBDocumentClient` via a static IAM user
+  credential (see "Infrastructure & environment" above), plus `getRawClient()` (for
   administrative commands the document client doesn't wrap) and the `TABLE_NAME` constant.
 - [app/lib/db/keys.ts](../app/lib/db/keys.ts) — key builders and the price-padding helper, so
   key formats live in exactly one place.
 - [app/lib/db/migrations/001-add-gsi1.ts](../app/lib/db/migrations/001-add-gsi1.ts) — Migration 1.
-  Run with `npm run db:migrate`. ⚠ Not yet successfully run — see "Blocked" above.
-- [app/lib/db/seed.ts](../app/lib/db/seed.ts) — the Seeding script above. Run with
-  `npm run db:seed`, after `db:migrate`. ⚠ Same blocker; untested end-to-end.
-- `package.json` — `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `@vercel/functions`,
-  `tsx` (dev, to run the scripts above), plus `db:migrate` / `db:seed` scripts.
+  Run with `npm run db:migrate`. ✅ Run against `car-dealership`; GSI1 reached `ACTIVE` (took
+  ~5.5 minutes on an empty table — normal DynamoDB latency, not data-size-dependent).
+- [app/lib/db/seed.ts](../app/lib/db/seed.ts) — the Seeding script above, now with
+  exponential-backoff retry on `ProvisionedThroughputExceededException` (the table's 5 WCU
+  throttled partway through the first run — a hard exception, not the `UnprocessedItems` case
+  the original retry loop handled) plus a 300ms pacing gap between batches. Run with
+  `npm run db:seed`, after GSI1 reaches `ACTIVE`. ✅ Run successfully: 330 items written, 140
+  confirmed queryable via GSI1 (matches the mock file's ACTIVE+PENDING count exactly), and a
+  spot-checked SOLD vehicle confirmed to have no GSI1PK/GSI1SK while still reachable via GetItem.
+- `package.json` — `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `tsx` (dev, to run the
+  scripts above), plus `db:migrate` / `db:seed` scripts (both pass `--env-file=.env.local`,
+  since `tsx` doesn't load it automatically the way `next dev`/`build` do).
 - `.env.local` — table connection info (gitignored).
 
 **Pending:**
@@ -302,17 +334,22 @@ Paths follow the `app/lib/...` convention already started, not the originally-gu
 
 ## Verification
 
-1. Run Migration 1 (`app/lib/db/migrations/001-add-gsi1.ts`) against a DynamoDB Local table first;
-   confirm `DescribeTable` shows `GSI1` as `ACTIVE`.
-2. Run Migration 1 against the real `car-dealer` table the same way.
-3. Run `app/lib/db/seed.ts` against that table; confirm 330 items landed (165 vehicles + 165 VIN
-   guards).
-4. Query GSI1 with `ReturnConsumedCapacity: 'TOTAL'` — confirm exactly 140 items come back (the
-   mock file's `ACTIVE` + `PENDING` count), arriving in ~1 page, and that consumed RCU matches
-   the small projection. If the count is 165 instead of 140, the sparse-GSI1 write in the seed
-   script is wrong; if RCU is high, the `INCLUDE` list has drifted toward `ALL`.
-5. Mark a vehicle `SOLD`; confirm it vanishes from GSI1 but `GetItem` still returns it.
-6. Attempt a duplicate-VIN insert; confirm the transaction is rejected.
-7. Toggle a favorite twice; confirm idempotency and that pattern 7 is a single `GetItem`.
-8. Unit-test `app/lib/vehicles/filter.ts` against a fixed array: combined filters, each sort
+Steps 1–3 have been run against the live `car-dealership` table and confirmed:
+
+1. ✅ `npm run db:migrate` — `DescribeTable` shows `GSI1` as `ACTIVE` (took ~5.5 minutes to
+   provision on an empty table).
+2. ✅ `npm run db:seed` — 330 items landed (165 vehicles + 165 VIN guards); a base-table `Scan`
+   with `Select: COUNT` confirms 330.
+3. ✅ Queried GSI1 (`GSI1PK=STATUS#ACTIVE`) with `ReturnConsumedCapacity: 'TOTAL'` — exactly 140
+   items came back (the mock file's `ACTIVE` + `PENDING` count), in a single page, at 7 RCU
+   total for the whole scan — confirms the `INCLUDE` projection is doing its job rather than
+   drifting toward `ALL`. Also spot-checked one `SOLD` vehicle directly: no `GSI1PK`/`GSI1SK` on
+   the item, but `GetItem` still returns it — the sparse-GSI1 design is working as intended.
+
+Not yet run (need the pending `app/lib/vehicles/*` and `app/lib/favorites/*` modules first):
+
+4. Mark a vehicle `SOLD`; confirm it vanishes from GSI1 but `GetItem` still returns it.
+5. Attempt a duplicate-VIN insert; confirm the transaction is rejected.
+6. Toggle a favorite twice; confirm idempotency and that pattern 7 is a single `GetItem`.
+7. Unit-test `app/lib/vehicles/filter.ts` against a fixed array: combined filters, each sort
    order, result counts.

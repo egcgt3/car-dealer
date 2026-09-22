@@ -7,13 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "tsx app/lib/db/migrations/001-add-gsi1.ts",
-    "db:seed": "tsx app/lib/db/seed.ts"
+    "db:migrate": "tsx --env-file=.env.local app/lib/db/migrations/001-add-gsi1.ts",
+    "db:seed": "tsx --env-file=.env.local app/lib/db/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1137.0",
     "@aws-sdk/lib-dynamodb": "^3.1137.0",
-    "@vercel/functions": "^3.9.9",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"

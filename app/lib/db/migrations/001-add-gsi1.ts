@@ -1,4 +1,4 @@
-// Migration 1 — add GSI1 (the browse/filter index) to the live `car-dealer` table.
+// Migration 1 — add GSI1 (the browse/filter index) to the live table (DYNAMODB_TABLE_NAME).
 // See "Migrations" in plans/dynamodb-schema.md. Idempotent: safe to re-run.
 //
 // Run with: npm run db:migrate
@@ -37,6 +37,22 @@ async function migrate() {
     return;
   }
 
+  // The schema design assumes PAY_PER_REQUEST (see "Table" in the schema doc), which needs
+  // no ProvisionedThroughput on a new GSI. A manually created table may be PROVISIONED
+  // instead — DynamoDB requires an explicit throughput for the GSI in that case, so match
+  // whatever the base table is already using rather than guessing a number.
+  const isProvisioned = Table?.ProvisionedThroughput?.ReadCapacityUnits !== undefined
+    && Table.ProvisionedThroughput.ReadCapacityUnits > 0;
+
+  if (isProvisioned) {
+    console.log(
+      `"${TABLE_NAME}" is PROVISIONED (${Table!.ProvisionedThroughput!.ReadCapacityUnits} RCU / ` +
+        `${Table!.ProvisionedThroughput!.WriteCapacityUnits} WCU), not PAY_PER_REQUEST as the ` +
+        `schema design assumes. Matching GSI1's throughput to the base table for now — consider ` +
+        `switching the table to on-demand billing to match the design.`,
+    );
+  }
+
   console.log(`Adding GSI1 to "${TABLE_NAME}"...`);
 
   await client.send(
@@ -58,6 +74,14 @@ async function migrate() {
               ProjectionType: "INCLUDE",
               NonKeyAttributes: GSI1_PROJECTED_ATTRIBUTES,
             },
+            ...(isProvisioned
+              ? {
+                  ProvisionedThroughput: {
+                    ReadCapacityUnits: Table!.ProvisionedThroughput!.ReadCapacityUnits!,
+                    WriteCapacityUnits: Table!.ProvisionedThroughput!.WriteCapacityUnits!,
+                  },
+                }
+              : {}),
           },
         },
       ],

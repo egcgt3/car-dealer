@@ -59,15 +59,42 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isThrottlingError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.name === "ProvisionedThroughputExceededException" || err.name === "ThrottlingException")
+  );
+}
+
 async function writeBatch(client: DynamoDBDocumentClient, batch: Record<string, unknown>[]) {
   let requestItems: Record<string, { PutRequest: { Item: Record<string, unknown> } }[]> = {
     [TABLE_NAME]: batch.map((Item) => ({ PutRequest: { Item } })),
   };
+  let attempt = 0;
 
-  // Retry anything DynamoDB couldn't process in this round (e.g. throttling).
   while (Object.keys(requestItems).length > 0) {
-    const result = await client.send(new BatchWriteCommand({ RequestItems: requestItems }));
-    requestItems = (result.UnprocessedItems as typeof requestItems) ?? {};
+    try {
+      // UnprocessedItems (partial success, no exception) is the normal case DynamoDB
+      // documents; retry those directly.
+      const result = await client.send(new BatchWriteCommand({ RequestItems: requestItems }));
+      requestItems = (result.UnprocessedItems as typeof requestItems) ?? {};
+      attempt = 0;
+    } catch (err) {
+      // On a PROVISIONED table (see plans/dynamodb-schema.md — the live table deviates
+      // from the design's intended on-demand billing), a whole BatchWriteItem call can
+      // also fail outright with ProvisionedThroughputExceededException once burst credit
+      // runs out, rather than returning UnprocessedItems. Back off and retry the same
+      // request instead of treating it as fatal.
+      if (!isThrottlingError(err)) throw err;
+      attempt += 1;
+      const delayMs = Math.min(1000 * 2 ** attempt, 15000);
+      console.log(`    throttled, retrying in ${delayMs}ms (attempt ${attempt})...`);
+      await sleep(delayMs);
+    }
   }
 }
 
@@ -85,6 +112,9 @@ async function seed() {
   for (const [i, batch] of batches.entries()) {
     await writeBatch(client, batch);
     console.log(`  batch ${i + 1}/${batches.length} written`);
+    // Small pacing gap so batches don't lean straight on the table's 5 WCU/5 RCU
+    // provisioned capacity back-to-back (see the throttling note in writeBatch).
+    if (i < batches.length - 1) await sleep(300);
   }
 
   const browsable = vehicles.filter((v) => v.status === "ACTIVE" || v.status === "PENDING").length;
