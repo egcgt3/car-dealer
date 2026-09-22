@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getActiveInventory } from "./lib/vehicles/repository";
 import { VehicleProvider } from "./lib/vehicles/vehicle-context";
+import Header from "./components/header/Header";
+import Footer from "./components/footer/Footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,8 +29,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <VehicleProvider initialVehicles={vehicles}>{children}</VehicleProvider>
+      <body className="h-dvh flex flex-col overflow-hidden">
+        <VehicleProvider initialVehicles={vehicles}>
+          <Header />
+          <main className="flex-1 overflow-y-auto">{children}</main>
+          <Footer />
+        </VehicleProvider>
       </body>
     </html>
   );
