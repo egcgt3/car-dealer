@@ -1,20 +1,27 @@
 "use client";
 import { useVehicles } from "../lib/vehicles/vehicle-context";
+import VehicleCard from "../components/vehicle-card/VehicleCard";
 
 export default function VehiclePage() {
   const { vehicles, isRefreshing, refresh } = useVehicles();
 
   return (
-    <div>
-      <h1 className="text-5xl font-bold">Vehicles</h1>
-      <p>{vehicles.length} vehicles in inventory</p>
-      <ul>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-5xl font-bold">Vehicles</h1>
+          <p className="text-base-content/70">{vehicles.length} vehicles in inventory</p>
+        </div>
+        <button type="button" className="btn btn-outline btn-sm" onClick={refresh} disabled={isRefreshing}>
+          {isRefreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {vehicles.map((v) => (
-          <li key={v.vehicleId}>
-            {v.year} {v.make} {v.model} — ${v.price.toLocaleString()}
-          </li>
+          <VehicleCard vehicle={v} key={v.vehicleId} />
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
