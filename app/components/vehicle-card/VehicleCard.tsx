@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import type { VehicleCard as VehicleCardData } from "../../lib/vehicles/types";
 import {
@@ -16,16 +19,19 @@ export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
   const dealDisplay = getDealRatingDisplay(dealRating);
   const isPriceDrop = previousPrice !== null && previousPrice > price;
   const monthlyPayment = estimateMonthlyPayment(price);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
 
   return (
     <div className="card bg-base-100 shadow-sm">
       <figure className="relative aspect-3/2">
+        {!isImageLoaded && <div className="skeleton absolute inset-0 rounded-none" />}
         <Image
           src={thumbnailUrl}
           alt={`${year} ${make} ${model}`}
           fill
           sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          className="object-cover"
+          className={`object-cover transition-opacity duration-300 ${isImageLoaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={() => setIsImageLoaded(true)}
         />
         {dealDisplay && (
           <span className={`badge ${dealDisplay.badgeClass} absolute top-2 left-2`}>
