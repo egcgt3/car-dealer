@@ -95,6 +95,15 @@ is linked via `.vercel/project.json`), not by a `CreateTable` script.
 keys are exposed by the integration; nothing indicates a GSI has been created. Access pattern 3
 (browse/filter/sort) is not functional until Migration 1 below runs.
 
+**Blocked:** Migration 1 and the seed script are written (see below) and type-check cleanly, but
+running either against the live table currently fails at the credential step —
+`AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity`. The OIDC token itself is
+valid (checked its `exp` claim), so this is the IAM role at `car_dealer_AWS_ROLE_ARN` not
+trusting this token's issuer/audience/subject
+(`...:project:car-dealer:environment:development`) — an AWS-side trust-policy configuration gap
+in the Vercel↔AWS integration, not an application bug. Needs to be resolved in the AWS IAM
+console (or by re-running the Vercel integration setup) before Migration 1 can actually execute.
+
 ## Migrations
 
 Because the table is live and (eventually) holds real inventory, schema changes are **migrations
@@ -269,19 +278,23 @@ migration is additive.
 Paths follow the `app/lib/...` convention already started, not the originally-guessed
 `lib/dynamodb/...`.
 
-**Done:**
+**Done (code written, type-checks and lints clean):**
 
 - [app/lib/db/db.ts](../app/lib/db/db.ts) — `DynamoDBDocumentClient` via OIDC federation
-  (`awsCredentialsProvider` from `@vercel/functions/oidc`).
-- `package.json` — `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `@vercel/functions`.
+  (`awsCredentialsProvider` from `@vercel/functions/oidc`), plus `getRawClient()` (for
+  administrative commands the document client doesn't wrap) and the `TABLE_NAME` constant.
+- [app/lib/db/keys.ts](../app/lib/db/keys.ts) — key builders and the price-padding helper, so
+  key formats live in exactly one place.
+- [app/lib/db/migrations/001-add-gsi1.ts](../app/lib/db/migrations/001-add-gsi1.ts) — Migration 1.
+  Run with `npm run db:migrate`. ⚠ Not yet successfully run — see "Blocked" above.
+- [app/lib/db/seed.ts](../app/lib/db/seed.ts) — the Seeding script above. Run with
+  `npm run db:seed`, after `db:migrate`. ⚠ Same blocker; untested end-to-end.
+- `package.json` — `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `@vercel/functions`,
+  `tsx` (dev, to run the scripts above), plus `db:migrate` / `db:seed` scripts.
 - `.env.local` — table connection info (gitignored).
 
 **Pending:**
 
-- `app/lib/db/migrations/001-add-gsi1.ts` — Migration 1 above. Blocks access pattern 3.
-- `app/lib/db/seed.ts` — the Seeding script above. Run after `001-add-gsi1.ts`.
-- `app/lib/db/keys.ts` — key builders and the price-padding helper, so key formats live in
-  exactly one place.
 - `app/lib/vehicles/types.ts` — `Vehicle`, `VehicleCard` (the GSI1 projection), enums.
 - `app/lib/vehicles/repository.ts` — patterns 1–5.
 - `app/lib/vehicles/filter.ts` — pure, dependency-free filter/sort/count over `VehicleCard[]`.
