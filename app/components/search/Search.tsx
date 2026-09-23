@@ -1,18 +1,20 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useVehicles } from "../../lib/vehicles/vehicle-context";
+
+const SEARCH_DEBOUNCE_MS = 250;
 
 export default function Search() {
   const [searchTerm, setSearchTerm] = useState("");
   const { vehicles, setSearchedVehicles } = useVehicles();
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const router = useRouter();
   const pathname = usePathname();
 
-  const handleSearch = useCallback((searchTerm: string) => {
-    setSearchTerm(searchTerm);
+  const runSearch = useCallback((searchTerm: string) => {
     const searchWords = searchTerm.toLowerCase().split(/\s+/).filter((word) => word !== "");
     if (searchWords.length === 0) {
       setSearchedVehicles(null);
@@ -33,6 +35,22 @@ export default function Search() {
     if (pathname !== "/vehicles") router.push("/vehicles");
   }, [vehicles, setSearchedVehicles, pathname, router]);
 
+  // The input updates instantly; filtering (and the redirect) waits until typing pauses.
+  function handleChange(value: string) {
+    setSearchTerm(value);
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => runSearch(value), SEARCH_DEBOUNCE_MS);
+  }
+
+  function handleClear() {
+    setSearchTerm("");
+    clearTimeout(debounceTimer.current);
+    runSearch("");
+    inputRef.current?.focus();
+  }
+
+  useEffect(() => () => clearTimeout(debounceTimer.current), []);
+
   return (
     <div className="relative flex px-5">
       <input
@@ -40,17 +58,14 @@ export default function Search() {
         placeholder="Search available vehicles..."
         className="input w-xs pr-9"
         value={searchTerm}
-        onChange={(e) => handleSearch(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
       />
       {searchTerm !== "" && (
         <button
           type="button"
           aria-label="Clear search"
           className="btn btn-ghost btn-circle btn-xs absolute right-7 top-1/2 -translate-y-1/2"
-          onClick={() => {
-            handleSearch("");
-            inputRef.current?.focus();
-          }}
+          onClick={handleClear}
         >
           ✕
         </button>
