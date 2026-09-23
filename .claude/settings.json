@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -o 'carousel-start[^{},]*' /tmp/car-dealer.css)",
+      "Bash(grep -o '.\\\\{0,40\\\\}1028px.\\\\{0,40\\\\}' /tmp/car-dealer-check.css)",
+      "Bash(grep -o '.\\\\{0,20\\\\}mx-auto.\\\\{0,60\\\\}' /tmp/car-dealer-check.css)",
+      "Bash(curl -s http://localhost:3000/ -o /tmp/car-dealer-final.html -w \"%{http_code}\\\\n\")"
+    ]
+  }
+}

@@ -57,7 +57,7 @@ export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
         </p>
 
         {factoryUpgrades > 0 && (
-          <div className="badge badge-outline mt-2">
+          <div className="badge badge-outline h-auto whitespace-normal py-1 text-center mt-2">
             Includes: {formatPrice(factoryUpgrades)} in factory upgrades
           </div>
         )}

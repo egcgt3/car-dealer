@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export default function Hero() {
   return (
-    <div className="hero bg-base-200 h-full">
+    <div className="hero bg-base-200 py-24">
       <div className="hero-content flex-col lg:flex-row-reverse">
         <Image
           alt="A car ready for sale on the dealership lot"
