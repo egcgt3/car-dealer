@@ -25,10 +25,15 @@ function CarLogo() {
 export default function Header() {
   return (
     <div className="navbar bg-base-100 shadow-sm">
-      <Link href="/" className="btn btn-ghost gap-2 text-xl italic text-zinc-400">
-        <CarLogo />
-        Car Dealership Demo
-      </Link>
+      <div className="flex-1">
+        <Link href="/" className="btn btn-ghost gap-2 text-xl italic text-zinc-400">
+          <CarLogo />
+          <span className="hidden sm:inline">Car Dealer Demo</span>
+        </Link>
+      </div>
+      <div className="flex px-5">
+        <input type="text" placeholder="Search available vehicles..." className="input w-xs" />
+      </div>
     </div>
   );
 }
