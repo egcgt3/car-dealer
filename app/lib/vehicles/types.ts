@@ -55,3 +55,38 @@ export interface VehicleCard {
   factoryUpgrades: number;
   thumbnailUrl: string;
 }
+
+export type VehicleStatus = "ACTIVE" | "PENDING" | "SOLD" | "DRAFT";
+
+export type InteriorMaterial = "LEATHER" | "LEATHERETTE" | "CLOTH";
+
+export interface VehiclePhoto {
+  url: string;
+  alt: string;
+  order: number;
+}
+
+// Full vehicle record (the base-table item, minus key attributes). Electric vehicles have no
+// combustion-engine or MPG figures, hence the nullable fields.
+export interface Vehicle extends VehicleCard {
+  vin: string;
+  stockNumber: string;
+  msrp: number;
+  mpgCity: number | null;
+  mpgHighway: number | null;
+  seating: number;
+  numberOfKeys: number;
+  exteriorColor: string;
+  interiorColor: string;
+  interiorMaterial: InteriorMaterial;
+  engine: string;
+  engineCylinders: number | null;
+  engineDisplacement: number | null;
+  transmission: string;
+  photos: VehiclePhoto[];
+  status: VehicleStatus;
+  listedAt: string;
+  soldAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

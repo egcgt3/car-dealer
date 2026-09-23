@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { VehicleCard as VehicleCardData } from "../../lib/vehicles/types";
 import {
   estimateMonthlyPayment,
@@ -10,10 +11,9 @@ import {
   getDealRatingDisplay,
 } from "../../lib/vehicles/format";
 
-// No click-through to a detail page yet — no vehicle-detail route exists (same pending
-// status as access pattern 1 in plans/dynamodb-schema.md).
+// The whole card links to /vehicles/[vehicleId] (plans/vehicle-detail-page.md).
 export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
-  const { year, make, model, trim, price, previousPrice, mileage, dealRating, factoryUpgrades, thumbnailUrl } =
+  const { vehicleId, year, make, model, trim, price, previousPrice, mileage, dealRating, factoryUpgrades, thumbnailUrl } =
     vehicle;
 
   const dealDisplay = getDealRatingDisplay(dealRating);
@@ -22,7 +22,10 @@ export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
 
   return (
-    <div className="card bg-base-100 shadow-sm border-solid border-1 border-violet-200">
+    <Link
+      href={`/vehicles/${vehicleId}`}
+      className="card bg-base-100 shadow-sm border-solid border-1 border-violet-200 text-left transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-primary"
+    >
       <figure className="relative aspect-3/2">
         {!isImageLoaded && <div className="skeleton absolute inset-0 rounded-none" />}
         <Image
@@ -62,6 +65,6 @@ export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
           </div>
         )}
       </div>
-    </div>
+    </Link>
   );
 }

@@ -58,7 +58,7 @@ export default function FeaturedCarousel({ vehicles }: { vehicles: VehicleCardDa
           {vehicles.map((vehicle) => (
             <div
               key={vehicle.vehicleId}
-              className="carousel-item w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
+              className="carousel-item w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)] xl:w-[calc((100%-3rem)/4)]"
             >
               <VehicleCard vehicle={vehicle} />
             </div>

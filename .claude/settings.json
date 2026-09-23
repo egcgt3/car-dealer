@@ -12,7 +12,12 @@
       "Bash(curl -s -o /dev/null -L -w \"%{http_code} %{content_type} %{size_download}B\\\\n\" -A \"Mozilla/5.0\" \"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/2019_Toyota_Camry_XSE_%28Australia%29.jpg/960px-2019_Toyota_Camry_XSE_%28Australia%29.jpg\")",
       "Bash(node -e ' *)",
       "Bash(node /private/tmp/claude-501/-Users-gerardogutierrez-Documents-personal-development-nextjs-car-dealer/fe1c8778-e0a6-49e3-8145-d5a58aae8c02/scratchpad/rewrite-mock-photos.js)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(node -e 'const v=require\\(\"./app/data/mocks.json\"\\);const s=k=>[...new Set\\(v.map\\(x=>x[k]\\)\\)];console.log\\(s\\(\"interiorMaterial\"\\),s\\(\"status\"\\),s\\(\"condition\"\\),s\\(\"mpgCity\"\\).slice\\(0,5\\), v.filter\\(x=>x.mpgCity==null\\).length\\)')",
+      "Bash(node -e 'const v=require\\(\"./app/data/mocks.json\"\\);const n={};for\\(const x of v\\)for\\(const[k,val]of Object.entries\\(x\\)\\)if\\(val===null\\)n[k]=\\(n[k]||0\\)+1;console.log\\(n, v.filter\\(x=>x.mpgCity==null\\).map\\(x=>x.fuelType\\).slice\\(0,3\\), v.map\\(x=>x.engineCylinders\\).filter\\(x=>x==null||x===0\\).length\\)')",
+      "Bash(python3 -)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" localhost:3000/)",
+      "Bash(node -e 'const v=require\\(\"./app/data/mocks.json\"\\);console.log\\(v.find\\(x=>x.status===\"ACTIVE\"\\).vehicleId, v.find\\(x=>x.status===\"SOLD\"\\).vehicleId, v.find\\(x=>x.status===\"DRAFT\"\\).vehicleId, v.find\\(x=>x.fuelType===\"ELECTRIC\"\\).vehicleId\\)')"
     ]
   }
 }

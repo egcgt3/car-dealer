@@ -1,7 +1,7 @@
 import { getActiveInventory } from "../../lib/vehicles/repository";
 import FeaturedCarousel from "./FeaturedCarousel";
 
-const FEATURED_COUNT = 5;
+const FEATURED_COUNT = 6;
 
 function pickRandom<T>(items: T[], count: number): T[] {
   const pool = [...items];

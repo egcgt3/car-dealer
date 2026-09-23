@@ -53,3 +53,45 @@ export function getDealRatingDisplay(
   if (dealRating === null) return null;
   return { label: DEAL_RATING_LABEL[dealRating], badgeClass: DEAL_RATING_BADGE_CLASS[dealRating] };
 }
+
+export function formatExactMileage(mileage: number): string {
+  return `${mileage.toLocaleString("en-US")} miles`;
+}
+
+const ENUM_LABEL_OVERRIDES: Record<string, string> = {
+  SUV: "SUV",
+  FWD: "Front-wheel drive",
+  RWD: "Rear-wheel drive",
+  AWD: "All-wheel drive",
+  "4WD": "Four-wheel drive",
+  CVT: "CVT",
+  PLUGIN_HYBRID: "Plug-in hybrid",
+  SINGLE_SPEED: "Single-speed",
+  GAS: "Gasoline",
+};
+
+/** "PLUGIN_HYBRID" -> "Plug-in hybrid", "SEDAN" -> "Sedan". */
+export function formatEnum(value: string): string {
+  const override = ENUM_LABEL_OVERRIDES[value];
+  if (override) return override;
+  const lower = value.replace(/_/g, " ").toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+export function daysSince(iso: string, now: number = Date.now()): number {
+  return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86_400_000));
+}
+
+export function formatMpg(city: number | null, highway: number | null): string | null {
+  if (city === null || highway === null) return null;
+  return `${city} city / ${highway} hwy`;
+}
