@@ -22,7 +22,7 @@ export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
 
   return (
-    <div className="card bg-base-100 shadow-sm">
+    <div className="card bg-base-100 shadow-sm border-solid border-1 border-violet-200">
       <figure className="relative aspect-3/2">
         {!isImageLoaded && <div className="skeleton absolute inset-0 rounded-none" />}
         <Image
