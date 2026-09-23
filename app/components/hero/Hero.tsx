@@ -19,9 +19,11 @@ export default function Hero() {
             Browse new, used, and certified vehicles at unbeatable prices. Every car comes
             with a transparent history and a team ready to help you drive away happy.
           </p>
-          <Link href="/vehicles" className="btn btn-primary btn-lg">
-            View All Vehicles
-          </Link>
+          <div className="aura">
+            <Link href="/vehicles" className="btn btn-primary btn-lg">
+              View All Vehicles
+            </Link>
+          </div>
         </div>
       </div>
     </div>
