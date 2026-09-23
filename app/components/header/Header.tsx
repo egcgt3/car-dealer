@@ -1,4 +1,5 @@
 import  Link from "next/link";
+import Search from "../search/Search";
 
 function CarLogo() {
   return (
@@ -31,9 +32,7 @@ export default function Header() {
           <span className="hidden sm:inline">Car Dealer Demo</span>
         </Link>
       </div>
-      <div className="flex px-5">
-        <input type="text" placeholder="Search available vehicles..." className="input w-xs" />
-      </div>
+      <Search />
     </div>
   );
 }

@@ -6,6 +6,9 @@ import type { VehicleCard } from "./types";
 
 interface VehicleContextValue {
   vehicles: VehicleCard[];
+  // null = no active search (show everything); [] = a search with no matches.
+  searchedVehicles: VehicleCard[] | null;
+  setSearchedVehicles: (searchedVehicles: VehicleCard[] | null) => void;
   isRefreshing: boolean;
   refresh: () => void;
 }
@@ -20,6 +23,7 @@ export function VehicleProvider({
   children: ReactNode;
 }) {
   const [vehicles, setVehicles] = useState(initialVehicles);
+  const [searchedVehicles, setSearchedVehicles] = useState<VehicleCard[] | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function refresh() {
@@ -34,7 +38,7 @@ export function VehicleProvider({
   }
 
   return (
-    <VehicleContext.Provider value={{ vehicles, isRefreshing: isPending, refresh }}>
+    <VehicleContext.Provider value={{ vehicles, searchedVehicles, setSearchedVehicles, isRefreshing: isPending, refresh }}>
       {children}
     </VehicleContext.Provider>
   );
