@@ -17,7 +17,8 @@
       "Bash(node -e 'const v=require\\(\"./app/data/mocks.json\"\\);const n={};for\\(const x of v\\)for\\(const[k,val]of Object.entries\\(x\\)\\)if\\(val===null\\)n[k]=\\(n[k]||0\\)+1;console.log\\(n, v.filter\\(x=>x.mpgCity==null\\).map\\(x=>x.fuelType\\).slice\\(0,3\\), v.map\\(x=>x.engineCylinders\\).filter\\(x=>x==null||x===0\\).length\\)')",
       "Bash(python3 -)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" localhost:3000/)",
-      "Bash(node -e 'const v=require\\(\"./app/data/mocks.json\"\\);console.log\\(v.find\\(x=>x.status===\"ACTIVE\"\\).vehicleId, v.find\\(x=>x.status===\"SOLD\"\\).vehicleId, v.find\\(x=>x.status===\"DRAFT\"\\).vehicleId, v.find\\(x=>x.fuelType===\"ELECTRIC\"\\).vehicleId\\)')"
+      "Bash(node -e 'const v=require\\(\"./app/data/mocks.json\"\\);console.log\\(v.find\\(x=>x.status===\"ACTIVE\"\\).vehicleId, v.find\\(x=>x.status===\"SOLD\"\\).vehicleId, v.find\\(x=>x.status===\"DRAFT\"\\).vehicleId, v.find\\(x=>x.fuelType===\"ELECTRIC\"\\).vehicleId\\)')",
+      "Bash(node -e 'const p=require\\(\"./package.json\"\\);console.log\\(p.dependencies,p.devDependencies\\)')"
     ]
   }
 }
