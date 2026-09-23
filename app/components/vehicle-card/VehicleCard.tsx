@@ -24,7 +24,7 @@ export default function VehicleCard({ vehicle }: { vehicle: VehicleCardData }) {
   return (
     <Link
       href={`/vehicles/${vehicleId}`}
-      className="card bg-base-100 shadow-sm border-solid border-1 border-violet-200 text-left transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-primary"
+      className="card bg-base-100 shadow-sm border-solid border-2 border-violet-200 text-left transition-shadow hover:border-dotted hover:border-4 focus:border-4 focus-visible:border-dotted focus-visible:outline-none"
     >
       <figure className="relative aspect-3/2">
         {!isImageLoaded && <div className="skeleton absolute inset-0 rounded-none" />}
